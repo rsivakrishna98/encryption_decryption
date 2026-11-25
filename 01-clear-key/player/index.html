@@ -1,0 +1,75 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Key Video Player</title>
+</head>
+<body>
+
+<h2>Clear Key Video Playback</h2>
+
+<video id="video" controls width="800"></video>
+
+<script>
+const video = document.getElementById("video");
+
+const KID = "REPLACE_WITH_KID";
+const KEY = "REPLACE_WITH_CONTENT_KEY";
+
+function toBase64Url(hex) {
+    const bytes = new Uint8Array(
+        hex.match(/.{2}/g).map(x => parseInt(x, 16))
+    );
+
+    return btoa(String.fromCharCode(...bytes))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=/g, "");
+}
+
+async function setup() {
+    const access = await navigator.requestMediaKeySystemAccess(
+        "org.w3.clearkey",
+        [{
+            initDataTypes: ["cenc"],
+            videoCapabilities: [
+                { contentType: 'video/mp4; codecs="avc1.64001f"' }
+            ]
+        }]
+    );
+
+    const mediaKeys = await access.createMediaKeys();
+    await video.setMediaKeys(mediaKeys);
+
+    video.addEventListener("encrypted", async (event) => {
+        const session = mediaKeys.createSession();
+
+        session.addEventListener("message", async () => {
+            const response = {
+                keys: [{
+                    kty: "oct",
+                    kid: toBase64Url(KID),
+                    k: toBase64Url(KEY)
+                }],
+                type: "temporary"
+            };
+
+            await session.update(
+                new TextEncoder().encode(JSON.stringify(response))
+            );
+        });
+
+        await session.generateRequest(
+            event.initDataType,
+            event.initData
+        );
+    });
+
+    video.src = "../output/encrypted/sample_encrypted.mp4";
+}
+
+setup().catch(console.error);
+</script>
+
+</body>
+</html>
